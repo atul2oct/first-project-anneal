@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anneal — Design &amp; Motion Studio</title>
+<meta name="description" content="Anneal is a design and motion studio building interactive brand worlds — sites, spatial interfaces, and motion systems.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#15130F;
+    --bg-soft:#1C1912;
+    --ink:#F1ECE1;
+    --ink-dim:#9C9587;
+    --ink-faint:#6B6559;
+    --brass:#C79A65;
+    --brass-dim:#93764F;
+    --steel:#8CA0AA;
+    --ember:#E1602C;
+    --line: rgba(241,236,225,0.14);
+    --font-display: 'Unbounded', sans-serif;
+    --font-body: 'Space Grotesk', sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15130F; --ink:#F1ECE1;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15130F; --ink:#F1ECE1;
+  }
+
+  *{ box-sizing:border-box; }
+  html{ scroll-behavior:auto; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-body);
+    font-size:16px;
+    line-height:1.5;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--brass); color:#15130F; }
+
+  @media (pointer: fine){
+    body.cursor-ready, body.cursor-ready a, body.cursor-ready button{ cursor:none; }
+  }
+
+  a{ color:inherit; text-decoration:none; }
+  ul{ margin:0; padding:0; list-style:none; }
+  h1,h2,h3,p{ margin:0; }
+  img{ max-width:100%; display:block; }
+
+  /* ---------- 3D canvas + atmosphere ---------- */
+  #scene-canvas{
+    position:fixed; inset:0;
+    width:100%; height:100%;
+    z-index:0;
+    display:block;
+  }
+  .vignette{
+    position:fixed; inset:0; z-index:1; pointer-events:none;
+    background: radial-gradient(ellipse at 50% 45%, rgba(21,19,15,0) 35%, rgba(21,19,15,0.55) 78%, rgba(21,19,15,0.92) 100%);
+  }
+  .grain{
+    position:fixed; inset:0; z-index:2; pointer-events:none;
+    opacity:0.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ---------- custom cursor ---------- */
+  .cursor-dot, .cursor-ring{
+    position:fixed; top:0; left:0; z-index:9999;
+    pointer-events:none;
+    transform:translate(-50%,-50%);
+    opacity:0;
+    transition:opacity .3s ease;
+  }
+  body.cursor-ready .cursor-dot, body.cursor-ready .cursor-ring{ opacity:1; }
+  .cursor-dot{
+    width:6px; height:6px; border-radius:50%;
+    background:var(--brass);
+  }
+  .cursor-ring{
+    width:38px; height:38px; border-radius:50%;
+    border:1px solid rgba(199,154,101,0.55);
+    transition:opacity .3s ease, width .25s ease, height .25s ease, border-color .25s ease, background .25s ease;
+  }
+  .cursor-ring.is-hover{
+    width:72px; height:72px;
+    background:rgba(199,154,101,0.08);
+    border-color:rgba(199,154,101,0.9);
+  }
+
+  /* ---------- nav ---------- */
+  .site-nav{
+    position:fixed; top:0; left:0; right:0; z-index:500;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:1.6rem clamp(1.25rem, 4vw, 3rem);
+  }
+  .logo{
+    font-family:var(--font-display); font-weight:600; font-size:1.05rem;
+    letter-spacing:0.01em;
+  }
+  .nav-toggle{
+    width:44px; height:44px;
+    display:flex; align-items:center; justify-content:center;
+    background:transparent; border:1px solid var(--line); border-radius:50%;
+    cursor:pointer;
+  }
+  .nav-toggle span, .nav-toggle span::before, .nav-toggle span::after{
+    content:''; display:block; width:16px; height:1px; background:var(--ink);
+    position:relative; transition:transform .3s ease, opacity .3s ease;
+  }
+  .nav-toggle span::before{ position:absolute; top:-5px; }
+  .nav-toggle span::after{ position:absolute; top:5px; }
+  .nav-toggle span{ background:transparent; }
+  .nav-toggle span::before, .nav-toggle span::after{ background:var(--ink); }
+  body.nav-open .nav-toggle span::before{ transform:translateY(5px) rotate(45deg); }
+  body.nav-open .nav-toggle span::after{ transform:translateY(-5px) rotate(-45deg); }
+
+  .nav-overlay{
+    position:fixed; inset:0; z-index:400;
+    background:rgba(19,17,13,0.97);
+    display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+    padding:0 clamp(1.5rem, 8vw, 8rem);
+    opacity:0; pointer-events:none;
+    transition:opacity .5s ease;
+  }
+  body.nav-open .nav-overlay{ opacity:1; pointer-events:auto; }
+  .nav-overlay ul{ display:flex; flex-direction:column; gap:0.4rem; }
+  .nav-overlay a{
+    font-family:var(--font-display); font-weight:500;
+    font-size:clamp(2.2rem, 7vw, 4.2rem);
+    color:var(--ink-dim);
+    transition:color .3s ease;
+    display:inline-block;
+  }
+  .nav-overlay a:hover, .nav-overlay a:focus-visible{ color:var(--ink); }
+  .nav-overlay-foot{
+    margin-top:3rem; display:flex; flex-direction:column; gap:0.4rem;
+    color:var(--ink-faint); font-size:0.9rem;
+  }
+  .nav-overlay-foot a{ color:var(--brass); }
+
+  a:focus-visible, button:focus-visible{
+    outline:1px solid var(--brass); outline-offset:4px;
+  }
+
+  /* ---------- layout ---------- */
+  main{ position:relative; z-index:3; }
+  .section{
+    min-height:100vh;
+    display:flex; flex-direction:column; justify-content:center;
+    padding:7rem clamp(1.5rem, 6vw, 6rem);
+    position:relative;
+  }
+
+  .kicker{
+    font-size:0.95rem; color:var(--brass);
+    margin-bottom:1.4rem; max-width:26ch;
+    text-shadow:0 2px 20px rgba(21,19,15,0.9);
+  }
+
+  /* hero */
+  .hero{ align-items:flex-start; }
+  .hero-inner{ max-width:52rem; }
+  .hero-title{
+    font-family:var(--font-display); font-weight:600;
+    font-size:clamp(2.4rem, 7.4vw, 6.4rem);
+    line-height:0.98; letter-spacing:-0.01em;
+    text-shadow:0 8px 40px rgba(21,19,15,0.85);
+  }
+  .reveal-line{ display:block; overflow:hidden; }
+  .reveal-line span{ display:inline-block; will-change:transform; }
+  .hero-sub{
+    margin-top:1.8rem; max-width:38ch;
+    font-size:clamp(1rem, 1.6vw, 1.2rem);
+    color:var(--ink-dim);
+    text-shadow:0 4px 24px rgba(21,19,15,0.85);
+  }
+  .scroll-cue{
+    position:absolute; bottom:2.6rem; left:clamp(1.5rem, 6vw, 6rem);
+    width:1px; height:56px; background:var(--line);
+    overflow:hidden;
+  }
+  .scroll-cue span{
+    position:absolute; top:-56px; left:0; width:100%; height:100%;
+    background:var(--brass);
+    animation:cueDrop 2.4s ease-in-out infinite;
+  }
+  @keyframes cueDrop{
+    0%{ transform:translateY(0); }
+    60%{ transform:translateY(112px); }
+    100%{ transform:translateY(112px); }
+  }
+
+  /* manifesto */
+  .manifesto{ align-items:center; text-align:left; }
+  .manifesto-inner{ max-width:44rem; margin-left:auto; margin-right:8vw; }
+  .pull-quote{
+    font-family:var(--font-display); font-weight:400;
+    font-size:clamp(1.5rem, 3.6vw, 2.6rem);
+    line-height:1.28;
+    text-shadow:0 6px 30px rgba(21,19,15,0.85);
+  }
+  .manifesto-sub{
+    margin-top:1.6rem; max-width:36ch; color:var(--ink-dim);
+    text-shadow:0 4px 24px rgba(21,19,15,0.85);
+  }
+
+  .section-heading{
+    font-family:var(--font-display); font-weight:600;
+    font-size:clamp(1.8rem, 4vw, 3rem);
+    margin-bottom:3rem; max-width:18ch;
+    text-shadow:0 6px 30px rgba(21,19,15,0.85);
+  }
+
+  /* capabilities */
+  .capability-list{ max-width:52rem; }
+  .capability-row{
+    padding:1.8rem 0; border-top:1px solid var(--line);
+    display:grid; grid-template-columns:minmax(0,14rem) 1fr; gap:1.5rem 2rem;
+    align-items:baseline;
+  }
+  .capability-list li:last-child{ border-bottom:1px solid var(--line); }
+  .capability-row h3{
+    font-family:var(--font-display); font-weight:500; font-size:1.2rem;
+    text-shadow:0 4px 20px rgba(21,19,15,0.85);
+  }
+  .capability-row p{
+    color:var(--ink-dim); max-width:44ch; font-size:0.98rem;
+    text-shadow:0 4px 20px rgba(21,19,15,0.85);
+  }
+
+  /* work */
+  .work-grid{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:1.5rem;
+  }
+  .work-card{
+    padding:2rem 1.7rem; border:1px solid var(--line);
+    background:rgba(21,19,15,0.45);
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+    transition:transform .35s ease, border-color .35s ease;
+  }
+  .work-card:hover{ border-color:rgba(199,154,101,0.55); }
+  .work-tag{
+    display:inline-block; font-size:0.8rem; color:var(--steel);
+    margin-bottom:1.2rem;
+  }
+  .work-card h3{
+    font-family:var(--font-display); font-weight:500; font-size:1.3rem;
+    margin-bottom:0.8rem;
+  }
+  .work-card p{ color:var(--ink-dim); font-size:0.95rem; }
+
+  /* process */
+  .process-grid{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:1.5rem 2rem;
+    max-width:64rem;
+  }
+  .process-stage{ padding-top:1.6rem; border-top:1px solid var(--line); }
+  .stage-index{
+    display:block; font-family:var(--font-display); font-weight:500;
+    font-size:1.3rem; color:var(--brass); margin-bottom:0.9rem;
+  }
+  .process-stage p{ color:var(--ink-dim); font-size:0.95rem; }
+
+  /* contact */
+  .contact{ align-items:flex-start; }
+  .contact h2{
+    font-family:var(--font-display); font-weight:600;
+    font-size:clamp(2rem, 5.4vw, 4rem); max-width:16ch; line-height:1.05;
+    text-shadow:0 8px 40px rgba(21,19,15,0.85);
+  }
+  .contact > p{
+    margin-top:1.4rem; max-width:38ch; color:var(--ink-dim);
+    text-shadow:0 4px 24px rgba(21,19,15,0.85);
+  }
+  .cta-button{
+    display:inline-block; margin-top:2.4rem;
+    padding:1rem 2.2rem; border:1px solid var(--brass); border-radius:999px;
+    font-size:1rem; color:var(--brass);
+    transition:background .35s ease, color .35s ease, box-shadow .35s ease;
+  }
+  .cta-button:hover{
+    background:var(--brass); color:#15130F;
+    box-shadow:0 0 40px rgba(199,154,101,0.35);
+  }
+  .site-footer{
+    margin-top:6rem; padding-top:2rem; border-top:1px solid var(--line);
+    display:flex; flex-wrap:wrap; gap:0.6rem 2rem;
+    color:var(--ink-faint); font-size:0.88rem; width:100%; max-width:60rem;
+  }
+
+  @media (max-width:760px){
+    .work-grid{ grid-template-columns:1fr; }
+    .process-grid{ grid-template-columns:1fr 1fr; }
+    .capability-row{ grid-template-columns:1fr; }
+    .manifesto-inner{ margin-right:0; }
+    .section{ padding-top:6rem; padding-bottom:6rem; }
+  }
+  @media (max-width:480px){
+    .process-grid{ grid-template-columns:1fr; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .scroll-cue span{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene-canvas"></canvas>
+<div class="vignette"></div>
+<div class="grain"></div>
+
+<div class="cursor-dot"></div>
+<div class="cursor-ring"></div>
+
+<header class="site-nav">
+  <a href="#top" class="logo magnetic">Anneal</a>
+  <button class="nav-toggle magnetic" id="navToggle" aria-label="Open menu" aria-expanded="false">
+    <span></span>
+  </button>
+</header>
+
+<nav class="nav-overlay" id="navOverlay" aria-hidden="true">
+  <ul>
+    <li><a href="#work" class="magnetic nav-link">Work</a></li>
+    <li><a href="#capabilities" class="magnetic nav-link">Capabilities</a></li>
+    <li><a href="#process" class="magnetic nav-link">Process</a></li>
+    <li><a href="#contact" class="magnetic nav-link">Contact</a></li>
+  </ul>
+  <div class="nav-overlay-foot">
+    <span>Remote-first, working worldwide</span>
+    <a href="mailto:hello@annealstudio.example">hello@annealstudio.example</a>
+  </div>
+</nav>
+
+<main>
+
+  <section id="top" class="section hero">
+    <div class="hero-inner">
+      <p class="kicker reveal-words">Design &amp; motion studio</p>
+      <h1 class="hero-title">
+        <span class="reveal-line"><span>We shape ideas</span></span>
+        <span class="reveal-line"><span>the way heat reshapes metal.</span></span>
+      </h1>
+      <p class="hero-sub reveal-words">A small studio building interactive brand worlds — sites, spatial interfaces, and motion systems that feel considered from the first frame.</p>
+    </div>
+    <div class="scroll-cue" aria-hidden="true"><span></span></div>
+  </section>
+
+  <section class="section manifesto">
+    <div class="manifesto-inner">
+      <p class="pull-quote reveal-words">Good interaction design isn't decoration on top of a product. It's the temperature the whole experience is held at — too cold and no one stays, too hot and everything warps.</p>
+      <p class="manifesto-sub reveal-words">We work in the middle of that range, on purpose, for teams who care as much about how something feels to use as how it looks.</p>
+    </div>
+  </section>
+
+  <section id="capabilities" class="section capabilities">
+    <h2 class="section-heading reveal-words">What we build</h2>
+    <ul class="capability-list">
+      <li class="capability-row">
+        <h3 class="reveal-words">Brand &amp; art direction</h3>
+        <p class="reveal-words">Visual identity systems built to move — palette, type, and motion language, documented as one coherent language rather than a static guideline PDF.</p>
+      </li>
+      <li class="capability-row">
+        <h3 class="reveal-words">Web experience engineering</h3>
+        <p class="reveal-words">Production front ends for the sites we design — performant, accessible, and built to survive contact with a real CMS and a real launch date.</p>
+      </li>
+      <li class="capability-row">
+        <h3 class="reveal-words">3D &amp; motion design</h3>
+        <p class="reveal-words">Spatial scenes, camera choreography, and transitions that give a brand a physical sense of weight and material.</p>
+      </li>
+      <li class="capability-row">
+        <h3 class="reveal-words">Interaction &amp; sound detail</h3>
+        <p class="reveal-words">The small stuff — cursor behavior, hover states, transition timing, audio feedback — that separates a demo from a finished product.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section id="work" class="section work">
+    <h2 class="section-heading reveal-words">Selected work</h2>
+    <div class="work-grid">
+      <article class="work-card magnetic">
+        <span class="work-tag">Web experience</span>
+        <h3>Kessler Optics</h3>
+        <p>A configurator-led site for a small eyewear maker, built around a frame-by-frame lens and material viewer.</p>
+      </article>
+      <article class="work-card magnetic">
+        <span class="work-tag">Product site &amp; motion system</span>
+        <h3>Vantage Transit</h3>
+        <p>Launch site for an electric micromobility startup, with a motion system reused across app, signage, and ads.</p>
+      </article>
+      <article class="work-card magnetic">
+        <span class="work-tag">Brand &amp; interactive catalogue</span>
+        <h3>Northline Records</h3>
+        <p>An identity and browsable release catalogue for an independent label, designed to feel like flipping through a crate.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="process" class="section process">
+    <h2 class="section-heading reveal-words">How a project moves</h2>
+    <div class="process-grid">
+      <div class="process-stage">
+        <span class="stage-index reveal-words">Heat</span>
+        <p class="reveal-words">We get the brief past the deck — real constraints, real competitors, real users, before a single pixel.</p>
+      </div>
+      <div class="process-stage">
+        <span class="stage-index reveal-words">Hold</span>
+        <p class="reveal-words">A concept phase held at a steady temperature: a few strong directions, tested against the brief, not a hundred watered-down ones.</p>
+      </div>
+      <div class="process-stage">
+        <span class="stage-index reveal-words">Cool</span>
+        <p class="reveal-words">We build in the open, in the browser, so what you approve is what ships — not a static comp that gets reinterpreted later.</p>
+      </div>
+      <div class="process-stage">
+        <span class="stage-index reveal-words">Release</span>
+        <p class="reveal-words">Launch, handoff documentation, and a couple of weeks on call after — so the first real week isn't the studio's problem alone.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact" class="section contact">
+    <h2 class="reveal-words">Have something worth shaping?</h2>
+    <p class="reveal-words">Tell us what you're building and where it's stuck. We'll tell you honestly if we're the right studio for it.</p>
+    <a href="mailto:hello@annealstudio.example" class="cta-button magnetic">Start a project</a>
+    <footer class="site-footer">
+      <span>Anneal Studio</span>
+      <span>hello@annealstudio.example</span>
+      <span>Remote-first, working worldwide</span>
+    </footer>
+  </section>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+<script>
+(function(){
+  "use strict";
+
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var pointerFine = window.matchMedia('(pointer: fine)').matches;
+
+  /* ============ helpers ============ */
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+  function smooth(t){ return t*t*(3-2*t); }
+
+  /* ============ custom cursor ============ */
+  var cursorDot = document.querySelector('.cursor-dot');
+  var cursorRing = document.querySelector('.cursor-ring');
+  var mouse = { x: window.innerWidth/2, y: window.innerHeight/2 };
+  var ring = { x: mouse.x, y: mouse.y };
+  var mouseNorm = { x: 0, y: 0 };
+  var mouseMoved = false;
+
+  window.addEventListener('mousemove', function(e){
+    mouse.x = e.clientX; mouse.y = e.clientY;
+    mouseNorm.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouseNorm.y = -((e.clientY / window.innerHeight) * 2 - 1);
+    if(!mouseMoved && pointerFine){
+      mouseMoved = true;
+      document.body.classList.add('cursor-ready');
+    }
+  }, { passive:true });
+
+  function cursorLoop(){
+    ring.x += (mouse.x - ring.x) * 0.16;
+    ring.y += (mouse.y - ring.y) * 0.16;
+    if(cursorRing){ cursorRing.style.transform = 'translate('+ring.x+'px,'+ring.y+'px) translate(-50%,-50%)'; }
+    if(cursorDot){ cursorDot.style.transform = 'translate('+mouse.x+'px,'+mouse.y+'px) translate(-50%,-50%)'; }
+    requestAnimationFrame(cursorLoop);
+  }
+  if(pointerFine){ requestAnimationFrame(cursorLoop); }
+
+  if(pointerFine){
+    document.querySelectorAll('.magnetic').forEach(function(el){
+      el.addEventListener('mouseenter', function(){ if(cursorRing) cursorRing.classList.add('is-hover'); });
+      el.addEventListener('mouseleave', function(){
+        if(cursorRing) cursorRing.classList.remove('is-hover');
+        el.style.transform = 'translate(0,0)';
+      });
+      el.addEventListener('mousemove', function(e){
+        var r = el.getBoundingClientRect();
+        var relX = e.clientX - r.left - r.width/2;
+        var relY = e.clientY - r.top - r.height/2;
+        el.style.transform = 'translate('+(relX*0.28)+'px,'+(relY*0.28)+'px)';
+      });
+    });
+  }
+
+  /* ============ nav overlay ============ */
+  var navToggle = document.getElementById('navToggle');
+  var navOverlay = document.getElementById('navOverlay');
+  function closeNav(){
+    document.body.classList.remove('nav-open');
+    navToggle.setAttribute('aria-expanded','false');
+    navOverlay.setAttribute('aria-hidden','true');
+  }
+  navToggle.addEventListener('click', function(){
+    var open = document.body.classList.toggle('nav-open');
+    navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    navOverlay.setAttribute('aria-hidden', open ? 'false' : 'true');
+  });
+  document.querySelectorAll('.nav-link').forEach(function(a){
+    a.addEventListener('click', closeNav);
+  });
+
+  /* ============ text reveal ============ */
+  function splitWords(el){
+    var text = el.textContent;
+    el.textContent = '';
+    var parts = text.split(/(\s+)/);
+    var spans = [];
+    parts.forEach(function(chunk){
+      if(chunk.trim() === ''){
+        el.appendChild(document.createTextNode(chunk));
+        return;
+      }
+      var outer = document.createElement('span');
+      outer.style.display = 'inline-block';
+      outer.style.overflow = 'hidden';
+      outer.style.verticalAlign = 'top';
+      var inner = document.createElement('span');
+      inner.style.display = 'inline-block';
+      inner.textContent = chunk;
+      outer.appendChild(inner);
+      el.appendChild(outer);
+      spans.push(inner);
+    });
+    return spans;
+  }
+
+  var revealGroups = [];
+  document.querySelectorAll('.reveal-words').forEach(function(el){
+    var spans = splitWords(el);
+    if(reduceMotion){ return; }
+    gsap.set(spans, { yPercent: 115, opacity: 0 });
+    revealGroups.push({ el: el, spans: spans });
+  });
+
+  var heroLines = document.querySelectorAll('.reveal-line > span');
+  if(!reduceMotion){ gsap.set(heroLines, { yPercent: 115 }); }
+
+  /* hero load sequence */
+  function playHero(){
+    if(reduceMotion) return;
+    var tl = gsap.timeline({ delay: 0.2 });
+    var heroKicker = document.querySelector('.hero .kicker');
+    var heroSub = document.querySelector('.hero-sub');
+    if(heroKicker){
+      var kSpans = revealGroups.find(function(g){ return g.el === heroKicker; });
+      if(kSpans){ tl.to(kSpans.spans, { yPercent:0, opacity:1, duration:0.7, stagger:0.03, ease:'power3.out' }, 0); }
+    }
+    tl.to(heroLines, { yPercent:0, duration:0.9, stagger:0.12, ease:'power4.out' }, 0.12);
+    if(heroSub){
+      var sSpans = revealGroups.find(function(g){ return g.el === heroSub; });
+      if(sSpans){ tl.to(sSpans.spans, { yPercent:0, opacity:1, duration:0.7, stagger:0.012, ease:'power3.out' }, 0.5); }
+    }
+  }
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  revealGroups.forEach(function(group){
+    if(group.el.closest('.hero')) return; /* handled by load sequence */
+    ScrollTrigger.create({
+      trigger: group.el,
+      start: 'top 88%',
+      once: true,
+      onEnter: function(){
+        gsap.to(group.spans, { yPercent:0, opacity:1, duration:0.85, stagger:0.02, ease:'power3.out' });
+      }
+    });
+  });
+
+  window.addEventListener('load', function(){
+    setTimeout(playHero, 120);
+  });
+
+  /* ============ smooth (lerped) wheel scroll — desktop only ============ */
+  var isTouch = window.matchMedia('(pointer: coarse)').matches;
+  var targetScroll = window.scrollY;
+  var currentScroll = window.scrollY;
+  var maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+
+  function recalcMax(){
+    maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+  }
+  window.addEventListener('resize', recalcMax);
+
+  if(!isTouch && !reduceMotion){
+    window.addEventListener('wheel', function(e){
+      e.preventDefault();
+      targetScroll += e.deltaY;
+      targetScroll = Math.max(0, Math.min(targetScroll, maxScroll));
+    }, { passive:false });
+
+    (function smoothScrollLoop(){
+      currentScroll += (targetScroll - currentScroll) * 0.085;
+      if(Math.abs(targetScroll - currentScroll) < 0.05){ currentScroll = targetScroll; }
+      window.scrollTo(0, currentScroll);
+      requestAnimationFrame(smoothScrollLoop);
+    })();
+
+    window.addEventListener('scroll', function(){
+      /* keep target in sync if user drags scrollbar / uses keys */
+      if(Math.abs(window.scrollY - currentScroll) > 4){
+        targetScroll = window.scrollY;
+        currentScroll = window.scrollY;
+      }
+    }, { passive:true });
+  } else {
+    window.addEventListener('scroll', function(){
+      currentScroll = window.scrollY;
+      targetScroll = window.scrollY;
+    }, { passive:true });
+  }
+
+  /* ============ three.js scene ============ */
+  var canvas = document.getElementById('scene-canvas');
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+  renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+  camera.position.set(0,0,9);
+
+  var key = new THREE.DirectionalLight(0xE7C9A0, 2.4);
+  key.position.set(4,5,6);
+  scene.add(key);
+
+  var rim = new THREE.DirectionalLight(0x8CA0AA, 1.6);
+  rim.position.set(-6,-2,-4);
+  scene.add(rim);
+
+  var amb = new THREE.AmbientLight(0x2a2620, 1.4);
+  scene.add(amb);
+
+  var geo = new THREE.IcosahedronGeometry(2.1, 1);
+  var mat = new THREE.MeshStandardMaterial({
+    color: 0xC79A65,
+    flatShading: true,
+    metalness: 0.78,
+    roughness: 0.3,
+    emissive: 0x24140a,
+    emissiveIntensity: 0.15
+  });
+  var solid = new THREE.Mesh(geo, mat);
+  scene.add(solid);
+
+  var wireGeo = new THREE.IcosahedronGeometry(2.26, 1);
+  var wireMat = new THREE.MeshBasicMaterial({ color: 0xF1ECE1, wireframe: true, transparent: true, opacity: 0.07 });
+  var wire = new THREE.Mesh(wireGeo, wireMat);
+  scene.add(wire);
+
+  /* drifting particle field */
+  var particleCount = 220;
+  var positions = new Float32Array(particleCount * 3);
+  for(var i=0; i<particleCount; i++){
+    positions[i*3] = (Math.random()-0.5) * 26;
+    positions[i*3+1] = (Math.random()-0.5) * 16;
+    positions[i*3+2] = (Math.random()-0.5) * 20 - 4;
+  }
+  var particleGeo = new THREE.BufferGeometry();
+  particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  var particleMat = new THREE.PointsMaterial({ color: 0xC79A65, size: 0.028, transparent: true, opacity: 0.35, sizeAttenuation: true });
+  var particles = new THREE.Points(particleGeo, particleMat);
+  scene.add(particles);
+
+  function onResize(){
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    recalcMax();
+  }
+  window.addEventListener('resize', onResize);
+
+  /* scroll-driven keyframes: cam pos / lookAt / obj rotation target / scale / color / emissive */
+  var keyframes = [
+    { cam:[0,0,9],        look:[0,0,0],     rot:[0.35,0.55,0],  scale:1.0,  color:0xC79A65, emissive:0.15 },
+    { cam:[-3.3,0.6,7.2], look:[0.8,0,0],   rot:[1.1,2.0,0.35], scale:0.85, color:0x9A8064, emissive:0.1  },
+    { cam:[3.2,-0.5,6.4], look:[-0.9,0.3,0],rot:[2.0,3.35,0.85],scale:1.18, color:0xD79A55, emissive:0.4  },
+    { cam:[0,1.6,5.6],    look:[0,-0.2,0],  rot:[3.0,4.75,1.2], scale:0.9,  color:0x8CA0AA, emissive:0.15 },
+    { cam:[-2.4,-1.0,6.8],look:[0.6,0.4,0], rot:[3.8,5.6,1.8],  scale:1.02, color:0xC79A65, emissive:0.2  },
+    { cam:[0,0,4.4],      look:[0,0,0],     rot:[4.6,6.4,2.4],  scale:1.35, color:0xE1602C, emissive:0.6  }
+  ];
+
+  var camState = { x:0, y:0, z:9 };
+  var lookState = { x:0, y:0, z:0 };
+  var objRotState = { x:0.35, y:0.55 };
+  var objScaleState = 1.0;
+  var colorCurrent = new THREE.Color(0xC79A65);
+  var emissiveCurrent = 0.15;
+  var autoSpin = 0;
+
+  function getFrame(){
+    var maxS = maxScroll || 1;
+    var p = clamp01(currentScroll / maxS);
+    var idxF = p * (keyframes.length - 1);
+    var i0 = Math.floor(idxF);
+    var i1 = Math.min(i0 + 1, keyframes.length - 1);
+    var t = smooth(idxF - i0);
+    var k0 = keyframes[i0], k1 = keyframes[i1];
+    return {
+      cam: [ lerp(k0.cam[0],k1.cam[0],t), lerp(k0.cam[1],k1.cam[1],t), lerp(k0.cam[2],k1.cam[2],t) ],
+      look:[ lerp(k0.look[0],k1.look[0],t), lerp(k0.look[1],k1.look[1],t), lerp(k0.look[2],k1.look[2],t) ],
+      rot: [ lerp(k0.rot[0],k1.rot[0],t), lerp(k0.rot[1],k1.rot[1],t), lerp(k0.rot[2],k1.rot[2],t) ],
+      scale: lerp(k0.scale, k1.scale, t),
+      colorA: k0.color, colorB: k1.color, colorT: t,
+      emissive: lerp(k0.emissive, k1.emissive, t)
+    };
+  }
+
+  var tmpColorA = new THREE.Color();
+  var tmpColorB = new THREE.Color();
+  var tmpColorTarget = new THREE.Color();
+
+  var clock = new THREE.Clock();
+
+  function animate(){
+    requestAnimationFrame(animate);
+    var dt = Math.min(clock.getDelta(), 0.05);
+    var frame = getFrame();
+
+    camState.x += (frame.cam[0] - camState.x) * 0.055;
+    camState.y += (frame.cam[1] - camState.y) * 0.055;
+    camState.z += (frame.cam[2] - camState.z) * 0.055;
+    camera.position.set(camState.x, camState.y, camState.z);
+
+    lookState.x += (frame.look[0] - lookState.x) * 0.055;
+    lookState.y += (frame.look[1] - lookState.y) * 0.055;
+    lookState.z += (frame.look[2] - lookState.z) * 0.055;
+    camera.lookAt(lookState.x, lookState.y, lookState.z);
+
+    if(!reduceMotion){ autoSpin += dt * 0.12; }
+    var mNormX = pointerFine ? mouseNorm.x : 0;
+    var mNormY = pointerFine ? mouseNorm.y : 0;
+    var targetRotX = frame.rot[0] + mNormY * 0.3;
+    var targetRotY = frame.rot[1] + mNormX * 0.3 + autoSpin;
+
+    objRotState.x += (targetRotX - objRotState.x) * 0.045;
+    objRotState.y += (targetRotY - objRotState.y) * 0.045;
+    solid.rotation.set(objRotState.x, objRotState.y, frame.rot[2]);
+    wire.rotation.copy(solid.rotation);
+
+    objScaleState += (frame.scale - objScaleState) * 0.05;
+    solid.scale.setScalar(objScaleState);
+    wire.scale.setScalar(objScaleState * 1.015);
+
+    tmpColorA.setHex(frame.colorA);
+    tmpColorB.setHex(frame.colorB);
+    tmpColorTarget.copy(tmpColorA).lerp(tmpColorB, frame.colorT);
+    colorCurrent.lerp(tmpColorTarget, 0.06);
+    mat.color.copy(colorCurrent);
+
+    emissiveCurrent += (frame.emissive - emissiveCurrent) * 0.06;
+    mat.emissiveIntensity = emissiveCurrent;
+
+    particles.rotation.y += dt * 0.01;
+
+    renderer.render(scene, camera);
+  }
+
+  recalcMax();
+  animate();
+
+})();
+</script>
+
+</body>
+</html>
